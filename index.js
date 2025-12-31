@@ -1,5 +1,4 @@
 import express from "express";
-import fetch from "node-fetch";
 
 const app = express();
 app.use(express.json());
@@ -11,7 +10,7 @@ const VERIFY_TOKEN = process.env.VERIFY_TOKEN;
 const WHATSAPP_TOKEN = process.env.WHATSAPP_TOKEN;
 
 // ===============================
-// RUTA DE VERIFICACIÓN (OBLIGATORIA)
+// VERIFICACIÓN DEL WEBHOOK
 // ===============================
 app.get("/webhook", (req, res) => {
   const mode = req.query["hub.mode"];
@@ -19,12 +18,12 @@ app.get("/webhook", (req, res) => {
   const challenge = req.query["hub.challenge"];
 
   if (mode === "subscribe" && token === VERIFY_TOKEN) {
-    console.log("✅ Webhook verificado correctamente");
-    res.status(200).send(challenge);
-  } else {
-    console.log("❌ Falló verificación del webhook");
-    res.sendStatus(403);
+    console.log("✅ Webhook verificado");
+    return res.status(200).send(challenge);
   }
+
+  console.log("❌ Verificación fallida");
+  res.sendStatus(403);
 });
 
 // ===============================
@@ -36,40 +35,35 @@ app.post("/webhook", async (req, res) => {
 
   try {
     const entry = req.body.entry?.[0];
-    const changes = entry?.changes?.[0];
-    const value = changes?.value;
+    const change = entry?.changes?.[0];
+    const value = change?.value;
     const message = value?.messages?.[0];
 
-    if (!message) {
-      return res.sendStatus(200);
-    }
+    if (!message) return res.sendStatus(200);
 
     const from = message.from;
-    const text = message.text?.body || "Mensaje recibido";
+    const text = message.text?.body || "Mensaje sin texto";
+    const phoneNumberId = value.metadata.phone_number_id;
 
-    // ===============================
-    // RESPUESTA AUTOMÁTICA
-    // ===============================
     await fetch(
-      `https://graph.facebook.com/v22.0/${value.metadata.phone_number_id}/messages`,
+      `https://graph.facebook.com/v22.0/${phoneNumberId}/messages`,
       {
         method: "POST",
         headers: {
-          "Authorization": `Bearer ${WHATSAPP_TOKEN}`,
+          Authorization: `Bearer ${WHATSAPP_TOKEN}`,
           "Content-Type": "application/json",
         },
         body: JSON.stringify({
           messaging_product: "whatsapp",
           to: from,
-          text: { body: `🤖 Bot activo\n\nRecibí: "${text}"` },
+          text: { body: `🤖 Bot activo\n\nDijiste: ${text}` },
         }),
       }
     );
 
     res.sendStatus(200);
-
-  } catch (error) {
-    console.error("❌ Error procesando mensaje:", error);
+  } catch (err) {
+    console.error("❌ Error:", err);
     res.sendStatus(500);
   }
 });
